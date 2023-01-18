@@ -9,6 +9,7 @@ import com.microsoft.gctoolkit.message.JVMEventChannelListener;
 import com.microsoft.gctoolkit.vertx.io.JVMEventCodec;
 import io.vertx.core.eventbus.DeliveryOptions;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,6 +19,22 @@ public class VertxJVMEventChannel extends VertxChannel implements JVMEventChanne
     final private DeliveryOptions options = new DeliveryOptions().setCodecName(JVMEventCodec.NAME);
 
     public VertxJVMEventChannel() {}
+
+    @Override
+    public void registerListener(JVMEventChannelListener listener) {
+        final JVMEventVerticle processor = new JVMEventVerticle(vertx(), listener.channel().getName(), listener);
+        CountDownLatch latch = new CountDownLatch(1);
+        vertx().deployVerticle(processor, state -> {
+            processor.setID((state.succeeded()) ? state.result() : "");
+            latch.countDown();
+        });
+
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
 
     @Override
     public void publish(Channels channel, JVMEvent message) {
@@ -30,10 +47,4 @@ public class VertxJVMEventChannel extends VertxChannel implements JVMEventChanne
 
     @Override
     public void close() {}
-
-    @Override
-    public void registerListener(JVMEventChannelListener listener) {
-        JVMEventVerticle processor = new JVMEventVerticle(vertx(), listener.channel().getName(), listener);
-        vertx().deployVerticle(processor, state -> processor.setID((state.succeeded()) ? state.result() : ""));
-    }
 }

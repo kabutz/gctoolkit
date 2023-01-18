@@ -19,10 +19,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -90,18 +87,21 @@ public class GarbageCollectionEventSourceTest {
         GCLogConsumer consumer = new GCLogConsumer();
         VertxDataSourceChannel channel = new VertxDataSourceChannel();
         channel.registerListener(consumer);
+        long[] observedNumberOfLines = {0L};
         try {
             logFile.stream().forEach(message -> {
+                observedNumberOfLines[0]++;
                 channel.publish(Channels.DATA_SOURCE, message);
             });
         } catch (IOException e) {
             fail(e.getMessage());
         }
         consumer.awaitEOF();
+        assertEquals(expectedNumberOfLines, observedNumberOfLines[0]);
         assertEquals(expectedNumberOfLines, consumer.getEventCount());
     }
 
-    private static class GCLogConsumer implements DataSourceParser {
+    private class GCLogConsumer implements DataSourceParser {
 
         private final CountDownLatch eof = new CountDownLatch(1);
         private volatile int eventCount = 0;
@@ -111,24 +111,11 @@ public class GarbageCollectionEventSourceTest {
             return Channels.DATA_SOURCE;
         }
 
-        volatile boolean eofed = false;
-        ArrayList<String> messages = new ArrayList<>();
         @Override
         public void receive(String payload) {
             eventCount++;
-            if ( eofed == true)
-                messages.add(payload);
             if ( END_OF_DATA_SENTINEL.equals(payload)) {
-                eofed = true;
-                ExecutorService es = Executors.newSingleThreadExecutor();
-                es.submit(() -> {
-                    try {
-                        Thread.sleep(2000);
-                    } catch (InterruptedException e) {
-                    }
                     eof.countDown();
-                    System.out.println(messages.size() + " collected after EOF");
-                });
             }
         }
 
